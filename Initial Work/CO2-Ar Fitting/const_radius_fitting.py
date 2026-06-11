@@ -58,19 +58,80 @@ def plot_point_and_fit(thetas, potcis, fit_func):
     plt.show()
 
 # Perform the fit and return the error
-def fit_and_plot(thetas, potcis, degree):
+def fit_and_plot(thetas, potcis, degree, plot=False):
     coeffs = legendre_fit(thetas, potcis, degree)
     fit_func = lambda theta: legendre_fit_func(theta, *coeffs)
     print("_______data________")
     print(fit_func)
     print(coeffs)
-    plot_point_and_fit(thetas, potcis, fit_func)
+    if plot:
+        plot_point_and_fit(thetas, potcis, fit_func)
     return np.sum((potcis - fit_func(thetas)) ** 2)
+
+# Use corrected Akaike information criterion to decide the number of terms
+def corrected_aic(n, error, k):
+    return n * np.log(error / n) + 2 * k
+
+def select_degree(thetas, potcis, max_degree):
+    best_aic = np.inf
+    best_degree = 0
+
+    for degree in range(2, max_degree + 1, 2):
+        error = fit_and_plot(thetas, potcis, degree, plot=False)
+        aic = corrected_aic(len(thetas), error, degree)
+        print(f"AIC (degree {degree}): {aic}")
+
+        if aic < best_aic:
+            best_aic = aic
+            best_degree = degree
+
+    print(f"Best degree: {best_degree}")
+    return best_degree
+
+
+# Find optimal degree by bounding the error
+def smallest_degree_below_error(thetas, potcis, max_degree, error_threshold):
+    for degree in range(2, max_degree + 1, 2):
+        error = fit_and_plot(thetas, potcis, degree, plot=False)
+        if error < error_threshold:
+            print(f"Smallest degree below error threshold {error_threshold}: {degree}")
+            return degree
+    print(f"No degree found below error threshold {error_threshold}")
+    return None
+
+# find optimal degree by determining percentage change in RMSE
+# when adding the new term: if the change is less than a certain percentage, we stop.
+def percentage_change_threshold(thetas, potcis, max_degree, percentage_threshold):
+    previous_error = float('inf')
+    previous_degree = None
+
+    for degree in range(2, max_degree + 1, 2):
+        error = fit_and_plot(thetas, potcis, degree, plot=False)
+        if previous_error != float('inf'):
+            percentage_change = (previous_error - error) / previous_error * 100
+            print(f"Percentage change (degree {degree}): {percentage_change:.2f}%")
+            if percentage_change < percentage_threshold:
+                print(f"Stopping at degree {degree} due to percentage change threshold {percentage_threshold}%")
+                return previous_degree
+        previous_error = error
+        previous_degree = degree
+
+    print(f"Reached max degree {max_degree} without meeting percentage change threshold {percentage_threshold}%")
+    return previous_degree
 
 # Example usage
 if __name__ == "__main__":
     degree = 50
 
     # fit the model, state function, state error, and plot results
-    error = fit_and_plot(thetas, potcis, degree)
+    error = fit_and_plot(thetas, potcis, degree, plot=True)
     print(f"Fitting error (degree {degree}): {error}")
+
+    # optimal degree by AIC
+    best_degree = select_degree(thetas, potcis, 50)
+
+    # optimal degree by bounding error
+    smallest_degree = smallest_degree_below_error(thetas, potcis, 50, error_threshold=2e-1)
+
+    # optimal degree by percentage change in RMSE
+    percentage_degree = percentage_change_threshold(thetas, potcis, 50, percentage_threshold=1)
