@@ -121,7 +121,7 @@ def percentage_change_threshold(thetas, potcis, max_degree, percentage_threshold
 
 # Example usage
 if __name__ == "__main__":
-    degree = 50
+    degree = 8
 
     # fit the model, state function, state error, and plot results
     error = fit_and_plot(thetas, potcis, degree, plot=True)
