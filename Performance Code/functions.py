@@ -3291,6 +3291,11 @@ def second_pass_transition_audit(result):
 YUMI_COEFFICIENT_OUTPUT_PATH = Path("CO2-H2_minimized_coefficients_yumi_format.txt")
 YUMI_COEFFICIENT_TITLE = "CO2 H2 PES fitted from minimizing_ab_initio_points.ipynb"
 YUMI_MISSING_COEFFICIENT_VALUE = 0.0
+YUMI_APPLY_COEFFICIENT_NORMALIZATION = True
+
+
+def yumi_coefficient_normalization(L):
+    return 2.0 * math.pi / math.sqrt(2 * int(L) + 1)
 
 
 def yumi_term_record_from_basis_term(term):
@@ -3308,7 +3313,11 @@ def is_yumi_allowed_basis_term(term):
     return (l1 + l2 + L) % 2 == 0
 
 
-def collect_yumi_coefficient_table(point_count_result, missing_value=YUMI_MISSING_COEFFICIENT_VALUE):
+def collect_yumi_coefficient_table(
+    point_count_result,
+    missing_value=YUMI_MISSING_COEFFICIENT_VALUE,
+    apply_normalization=YUMI_APPLY_COEFFICIENT_NORMALIZATION,
+):
     results_by_radius = point_count_result["results_by_radius"]
     radii = numpy.asarray(sorted(float(radius) for radius in results_by_radius), dtype=float)
 
@@ -3328,7 +3337,10 @@ def collect_yumi_coefficient_table(point_count_result, missing_value=YUMI_MISSIN
                 continue
             record = yumi_term_record_from_basis_term(term)
             yumi_records.add(record)
-            term_coefficients[record] = float(coefficient)
+            export_coefficient = float(coefficient)
+            if apply_normalization:
+                export_coefficient *= yumi_coefficient_normalization(term[0])
+            term_coefficients[record] = export_coefficient
         coefficient_by_radius_and_term[float(radius)] = term_coefficients
 
     sorted_records = sorted(yumi_records, key=lambda record: (record[0], record[2], record[3]))
@@ -3343,6 +3355,7 @@ def collect_yumi_coefficient_table(point_count_result, missing_value=YUMI_MISSIN
         "radii": radii,
         "records": sorted_records,
         "coefficients": numpy.asarray(coefficient_rows, dtype=float),
+        "normalization": "2*pi/sqrt(2*L+1)" if apply_normalization else None,
     }
 
 
@@ -3374,8 +3387,9 @@ def save_yumi_coefficients(
     point_count_result,
     output_path=YUMI_COEFFICIENT_OUTPUT_PATH,
     title=YUMI_COEFFICIENT_TITLE,
+    apply_normalization=YUMI_APPLY_COEFFICIENT_NORMALIZATION,
 ):
-    table = collect_yumi_coefficient_table(point_count_result)
+    table = collect_yumi_coefficient_table(point_count_result, apply_normalization=apply_normalization)
     output_path = Path(output_path)
     output_path.write_text(format_yumi_coefficients(table, title=title))
     return {
@@ -3384,6 +3398,7 @@ def save_yumi_coefficients(
         "term_count": int(len(table["records"])),
         "radii": table["radii"],
         "records": table["records"],
+        "normalization": table["normalization"],
     }
 
 
@@ -4623,12 +4638,30 @@ class HysteresisAcquisitionModel:
             return second_pass_transition_audit(result_for_audit)
         return result["transitions"]
 
-    def coefficient_table(self, missing_value=YUMI_MISSING_COEFFICIENT_VALUE):
-        return collect_yumi_coefficient_table(self.require_fit(), missing_value=missing_value)
+    def coefficient_table(
+        self,
+        missing_value=YUMI_MISSING_COEFFICIENT_VALUE,
+        apply_normalization=YUMI_APPLY_COEFFICIENT_NORMALIZATION,
+    ):
+        return collect_yumi_coefficient_table(
+            self.require_fit(),
+            missing_value=missing_value,
+            apply_normalization=apply_normalization,
+        )
 
-    def save_yumi_coefficients(self, output_path=YUMI_COEFFICIENT_OUTPUT_PATH, title=None):
+    def save_yumi_coefficients(
+        self,
+        output_path=YUMI_COEFFICIENT_OUTPUT_PATH,
+        title=None,
+        apply_normalization=YUMI_APPLY_COEFFICIENT_NORMALIZATION,
+    ):
         title = title or f"{self.dataset.name} PES fitted coefficients"
-        return save_yumi_coefficients(self.require_fit(), output_path=output_path, title=title)
+        return save_yumi_coefficients(
+            self.require_fit(),
+            output_path=output_path,
+            title=title,
+            apply_normalization=apply_normalization,
+        )
 
     def isotropic_coefficients(self, term=(0, 0, 0)):
         return isotropic_coefficient_series_from_result(self.require_fit(), term=term)
